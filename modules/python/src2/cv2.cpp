@@ -9,6 +9,7 @@
 #include "numpy/ndarrayobject.h"
 
 #include "opencv2/core.hpp"
+#include "opencv2/core/utility.hpp"
 #include "opencv2/contrib.hpp"
 #include "opencv2/flann/miniflann.hpp"
 #include "opencv2/imgproc.hpp"
@@ -99,6 +100,8 @@ catch (const cv::Exception &e) \
 using namespace cv;
 typedef cv::softcascade::ChannelFeatureBuilder softcascade_ChannelFeatureBuilder;
 
+typedef std::string string;
+
 typedef std::vector<uchar> vector_uchar;
 typedef std::vector<int> vector_int;
 typedef std::vector<float> vector_float;
@@ -125,6 +128,10 @@ typedef Ptr<FeatureDetector> Ptr_FeatureDetector;
 typedef Ptr<DescriptorExtractor> Ptr_DescriptorExtractor;
 typedef Ptr<Feature2D> Ptr_Feature2D;
 typedef Ptr<DescriptorMatcher> Ptr_DescriptorMatcher;
+typedef Ptr<BackgroundSubtractor> Ptr_BackgroundSubtractor;
+typedef Ptr<BackgroundSubtractorMOG> Ptr_BackgroundSubtractorMOG;
+typedef Ptr<BackgroundSubtractorMOG2> Ptr_BackgroundSubtractorMOG2;
+typedef Ptr<BackgroundSubtractorGMG> Ptr_BackgroundSubtractorGMG;
 
 typedef Ptr<cv::softcascade::ChannelFeatureBuilder> Ptr_ChannelFeatureBuilder;
 

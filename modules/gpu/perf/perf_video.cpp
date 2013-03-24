@@ -4,6 +4,18 @@ using namespace std;
 using namespace testing;
 using namespace perf;
 
+#if defined(HAVE_XINE)         || \
+    defined(HAVE_GSTREAMER)    || \
+    defined(HAVE_QUICKTIME)    || \
+    defined(HAVE_AVFOUNDATION) || \
+    defined(HAVE_FFMPEG)       || \
+    defined(WIN32) /* assume that we have ffmpeg */
+
+#  define BUILD_WITH_VIDEO_INPUT_SUPPORT 1
+#else
+#  define BUILD_WITH_VIDEO_INPUT_SUPPORT 0
+#endif
+
 namespace cv
 {
     template<> void Ptr<CvBGStatModel>::delete_obj()
@@ -142,7 +154,7 @@ PERF_TEST_P(Image_MinDistance, Video_GoodFeaturesToTrack,
 PERF_TEST_P(ImagePair, Video_BroxOpticalFlow,
             Values<pair_string>(make_pair("gpu/opticalflow/frame0.png", "gpu/opticalflow/frame1.png")))
 {
-    declare.time(10);
+    declare.time(300);
 
     cv::Mat frame0 = readImage(GetParam().first, cv::IMREAD_GRAYSCALE);
     ASSERT_FALSE(frame0.empty());
@@ -372,8 +384,8 @@ PERF_TEST_P(ImagePair, Video_OpticalFlowDual_TVL1,
 
         TEST_CYCLE() d_alg(d_frame0, d_frame1, u, v);
 
-        GPU_SANITY_CHECK(u, 1e-4);
-        GPU_SANITY_CHECK(v, 1e-4);
+        GPU_SANITY_CHECK(u, 1e-2);
+        GPU_SANITY_CHECK(v, 1e-2);
     }
     else
     {
@@ -482,6 +494,8 @@ PERF_TEST_P(ImagePair, Video_FastOpticalFlowBM,
 //////////////////////////////////////////////////////
 // FGDStatModel
 
+#if BUILD_WITH_VIDEO_INPUT_SUPPORT
+
 DEF_PARAM_TEST_1(Video, string);
 
 PERF_TEST_P(Video, Video_FGDStatModel,
@@ -548,8 +562,12 @@ PERF_TEST_P(Video, Video_FGDStatModel,
     }
 }
 
+#endif
+
 //////////////////////////////////////////////////////
 // MOG
+
+#if BUILD_WITH_VIDEO_INPUT_SUPPORT
 
 DEF_PARAM_TEST(Video_Cn_LearningRate, string, MatCn, double);
 
@@ -614,10 +632,10 @@ PERF_TEST_P(Video_Cn_LearningRate, Video_MOG,
     }
     else
     {
-        cv::BackgroundSubtractorMOG mog;
+        cv::Ptr<cv::BackgroundSubtractor> mog = cv::createBackgroundSubtractorMOG();
         cv::Mat foreground;
 
-        mog(frame, foreground, learningRate);
+        mog->apply(frame, foreground, learningRate);
 
         for (int i = 0; i < 10; ++i)
         {
@@ -635,7 +653,7 @@ PERF_TEST_P(Video_Cn_LearningRate, Video_MOG,
             }
 
             startTimer(); next();
-            mog(frame, foreground, learningRate);
+            mog->apply(frame, foreground, learningRate);
             stopTimer();
         }
 
@@ -643,8 +661,12 @@ PERF_TEST_P(Video_Cn_LearningRate, Video_MOG,
     }
 }
 
+#endif
+
 //////////////////////////////////////////////////////
 // MOG2
+
+#if BUILD_WITH_VIDEO_INPUT_SUPPORT
 
 DEF_PARAM_TEST(Video_Cn, string, int);
 
@@ -709,12 +731,12 @@ PERF_TEST_P(Video_Cn, Video_MOG2,
     }
     else
     {
-        cv::BackgroundSubtractorMOG2 mog2;
-        mog2.set("detectShadows", false);
+        cv::Ptr<cv::BackgroundSubtractor> mog2 = cv::createBackgroundSubtractorMOG2();
+        mog2->set("detectShadows", false);
 
         cv::Mat foreground;
 
-        mog2(frame, foreground);
+        mog2->apply(frame, foreground);
 
         for (int i = 0; i < 10; ++i)
         {
@@ -732,7 +754,7 @@ PERF_TEST_P(Video_Cn, Video_MOG2,
             }
 
             startTimer(); next();
-            mog2(frame, foreground);
+            mog2->apply(frame, foreground);
             stopTimer();
         }
 
@@ -740,8 +762,12 @@ PERF_TEST_P(Video_Cn, Video_MOG2,
     }
 }
 
+#endif
+
 //////////////////////////////////////////////////////
 // MOG2GetBackgroundImage
+
+#if BUILD_WITH_VIDEO_INPUT_SUPPORT
 
 PERF_TEST_P(Video_Cn, Video_MOG2GetBackgroundImage,
             Combine(Values("gpu/video/768x576.avi", "gpu/video/1920x1080.avi"),
@@ -789,7 +815,7 @@ PERF_TEST_P(Video_Cn, Video_MOG2GetBackgroundImage,
     }
     else
     {
-        cv::BackgroundSubtractorMOG2 mog2;
+        cv::Ptr<cv::BackgroundSubtractor> mog2 = cv::createBackgroundSubtractorMOG2();
         cv::Mat foreground;
 
         for (int i = 0; i < 10; ++i)
@@ -807,84 +833,23 @@ PERF_TEST_P(Video_Cn, Video_MOG2GetBackgroundImage,
                 cv::swap(temp, frame);
             }
 
-            mog2(frame, foreground);
+            mog2->apply(frame, foreground);
         }
 
         cv::Mat background;
 
-        TEST_CYCLE() mog2.getBackgroundImage(background);
+        TEST_CYCLE() mog2->getBackgroundImage(background);
 
         CPU_SANITY_CHECK(background);
     }
 }
 
-//////////////////////////////////////////////////////
-// VIBE
-
-PERF_TEST_P(Video_Cn, Video_VIBE,
-            Combine(Values("gpu/video/768x576.avi", "gpu/video/1920x1080.avi"),
-                    GPU_CHANNELS_1_3_4))
-{
-    const string inputFile = perf::TestBase::getDataPath(GET_PARAM(0));
-    const int cn = GET_PARAM(1);
-
-    cv::VideoCapture cap(inputFile);
-    ASSERT_TRUE(cap.isOpened());
-
-    cv::Mat frame;
-    cap >> frame;
-    ASSERT_FALSE(frame.empty());
-
-    if (cn != 3)
-    {
-        cv::Mat temp;
-        if (cn == 1)
-            cv::cvtColor(frame, temp, cv::COLOR_BGR2GRAY);
-        else
-            cv::cvtColor(frame, temp, cv::COLOR_BGR2BGRA);
-        cv::swap(temp, frame);
-    }
-
-    if (PERF_RUN_GPU())
-    {
-        cv::gpu::GpuMat d_frame(frame);
-        cv::gpu::VIBE_GPU vibe;
-        cv::gpu::GpuMat foreground;
-
-        vibe(d_frame, foreground);
-
-        for (int i = 0; i < 10; ++i)
-        {
-            cap >> frame;
-            ASSERT_FALSE(frame.empty());
-
-            if (cn != 3)
-            {
-                cv::Mat temp;
-                if (cn == 1)
-                    cv::cvtColor(frame, temp, cv::COLOR_BGR2GRAY);
-                else
-                    cv::cvtColor(frame, temp, cv::COLOR_BGR2BGRA);
-                cv::swap(temp, frame);
-            }
-
-            d_frame.upload(frame);
-
-            startTimer(); next();
-            vibe(d_frame, foreground);
-            stopTimer();
-        }
-
-        GPU_SANITY_CHECK(foreground);
-    }
-    else
-    {
-        FAIL_NO_CPU();
-    }
-}
+#endif
 
 //////////////////////////////////////////////////////
 // GMG
+
+#if BUILD_WITH_VIDEO_INPUT_SUPPORT
 
 DEF_PARAM_TEST(Video_Cn_MaxFeatures, string, MatCn, int);
 
@@ -958,11 +923,11 @@ PERF_TEST_P(Video_Cn_MaxFeatures, Video_GMG,
         cv::Mat foreground;
         cv::Mat zeros(frame.size(), CV_8UC1, cv::Scalar::all(0));
 
-        cv::BackgroundSubtractorGMG gmg;
-        gmg.set("maxFeatures", maxFeatures);
-        gmg.initialize(frame.size(), 0.0, 255.0);
+        cv::Ptr<cv::BackgroundSubtractor> gmg = cv::createBackgroundSubtractorGMG();
+        gmg->set("maxFeatures", maxFeatures);
+        //gmg.initialize(frame.size(), 0.0, 255.0);
 
-        gmg(frame, foreground);
+        gmg->apply(frame, foreground);
 
         for (int i = 0; i < 150; ++i)
         {
@@ -985,7 +950,7 @@ PERF_TEST_P(Video_Cn_MaxFeatures, Video_GMG,
             }
 
             startTimer(); next();
-            gmg(frame, foreground);
+            gmg->apply(frame, foreground);
             stopTimer();
         }
 
@@ -993,10 +958,12 @@ PERF_TEST_P(Video_Cn_MaxFeatures, Video_GMG,
     }
 }
 
-#ifdef HAVE_NVCUVID
+#endif
 
 //////////////////////////////////////////////////////
 // VideoReader
+
+#if defined(HAVE_NVCUVID) && BUILD_WITH_VIDEO_INPUT_SUPPORT
 
 PERF_TEST_P(Video, Video_VideoReader, Values("gpu/video/768x576.avi", "gpu/video/1920x1080.avi"))
 {
@@ -1028,10 +995,12 @@ PERF_TEST_P(Video, Video_VideoReader, Values("gpu/video/768x576.avi", "gpu/video
     }
 }
 
+#endif
+
 //////////////////////////////////////////////////////
 // VideoWriter
 
-#ifdef WIN32
+#if defined(HAVE_NVCUVID) && defined(WIN32)
 
 PERF_TEST_P(Video, Video_VideoWriter, Values("gpu/video/768x576.avi", "gpu/video/1920x1080.avi"))
 {
@@ -1089,6 +1058,4 @@ PERF_TEST_P(Video, Video_VideoWriter, Values("gpu/video/768x576.avi", "gpu/video
     SANITY_CHECK(frame);
 }
 
-#endif // WIN32
-
-#endif // HAVE_NVCUVID
+#endif
